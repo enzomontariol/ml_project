@@ -43,9 +43,13 @@ class Model(Clusterer):
             AdaBoostClassifier(random_state=self.random_state): None,
             LogisticRegression(random_state=self.random_state): None,
         }
-
         self.train_classifier_models()
         self.__sklearn_classifiers = self.__get_sklearn_classifiers()
+        
+        self.__lstm_results = self.__get_lstm_model()
+        self.lstm_models = self.__lstm_results[0]
+        self.lstm_scores = self.__lstm_results[1]
+        self.lstm_global_score = self.__get_lstm_global_score()
 
     def __get_list_by_cluster(self, df: pd.DataFrame) -> List[pd.DataFrame]:
         """
@@ -108,10 +112,29 @@ class Model(Clusterer):
             scores[i] = balanced_accuracy
             
         return models, scores
+    
+    def __get_lstm_global_score(self):
+        """
+        Returns the global score of the LSTM model.
+        """
+        predictions = []
+        for i in range(self.n_cluster):
+            X_test = self.X_test_list[i]
+            X_test = X_test.values.reshape((X_test.shape[0], 1, X_test.shape[1]))  # Reshape X_test for LSTM input
+            model = self.lstm_models[i]
+            predictions.append(model.predict(X_test, verbose = 0).flatten())
+        y_pred_all = np.concatenate(predictions)
+        y_pred_binary = (y_pred_all > 0.5).astype(int)  # Convert probabilities to binary predictions
+        lstm_global_score = balanced_accuracy_score(y_pred_binary, self.y_test)
+        return lstm_global_score
 
     def __create_and_train_lstm_model(
-        X_train_cluster, y_train_cluster, X_test_cluster, y_test_cluster
+        self, X_train_cluster, y_train_cluster, X_test_cluster, y_test_cluster
     ):
+        # Suppose que tu veux 1 seul timestep par séquence (chaque observation = 1 timestep)
+        X_train_cluster = X_train_cluster.values.reshape((X_train_cluster.shape[0], 1, X_train_cluster.shape[1]))
+        X_test_cluster = X_test_cluster.values.reshape((X_test_cluster.shape[0], 1, X_test_cluster.shape[1]))
+
         # Model architecture
         model = tf.keras.Sequential(
             [
@@ -156,7 +179,7 @@ class Model(Clusterer):
             batch_size=32,
             validation_split=0.2,
             class_weight=cluster_weights,
-            verbose=1,
+            verbose=0,
         )
 
         # Get predictions
@@ -216,4 +239,3 @@ if __name__ == "__main__":
         random_state=42,
         spot_dif=False,
     )
-    print(model.assert_best_classifier())
