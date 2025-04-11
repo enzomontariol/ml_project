@@ -68,8 +68,8 @@ class Clusterer:
         self.__pca_main = PCA(n_components)
         self.X_train = self.__get_X(df_train_path, sample_type=SampleType.train)
         self.X_test = self.__get_X(df_test_path, sample_type=SampleType.test)
-        self.__X_train_pca = self.__pca_main.transform(self.X_train)
-        self.__X_test_pca = self.__pca_main.transform(self.X_test)
+        self._X_train_pca = self.__pca_main.transform(self.X_train)
+        self._X_test_pca = self.__pca_main.transform(self.X_test)
         self.__get_cluster_labels()
 
         self.y_train = self.__get_y(y_train_path, sample_type=SampleType.train)
@@ -116,10 +116,73 @@ class Clusterer:
         """
         Get cluster labels for the given model and data.
         """
-        self.__cluster_model.fit(self.__X_train_pca)
-        self.X_train["Cluster"] = self.__cluster_model.predict(self.__X_train_pca)
-        self.X_test["Cluster"] = self.__cluster_model.predict(self.__X_test_pca)
+        self.__cluster_model.fit(self._X_train_pca)
+        self.X_train["Cluster"] = self.__cluster_model.predict(self._X_train_pca)
+        self.X_test["Cluster"] = self.__cluster_model.predict(self._X_test_pca)
+        
+    def explain_variance_summary(self) -> pd.DataFrame:
+        """
+        Get the explained variance ratio of the PCA components.
+        """
+        explained_variance = pd.DataFrame(
+            self.__pca_main.explained_variance_ratio_,
+            columns=["Explained Variance Ratio"],
+            index=[f"PC{i+1}" for i in range(self.__pca_main.n_components_)],
+        )
+        return explained_variance    
+    
+    def anaylize_pca(self):
+        """
+        Analyze PCA components and plot the explained variance ratio.
+        """
+        fig, ax = plt.subplots(figsize=(10, 5))
+        ax.plot(
+            range(1, len(self.__pca_main.explained_variance_ratio_) + 1),
+            self.__pca_main.explained_variance_ratio_,
+            marker="o",
+        )
+        ax.set_title("PCA Explained Variance Ratio")
+        ax.set_xlabel("Number of Components")
+        ax.set_ylabel("Explained Variance Ratio")
+        ax.grid(True)
+        plt.show()
+        
+    def pca_variables_importance(self) -> pd.DataFrame:
+        """
+        Get the PCA variables importance as a DataFrame.
+        Each row corresponds to a principal component, and each column shows the loading of each original variable.
+        """
+        pca_components = pd.DataFrame(
+            self.__pca_main.components_,
+            columns=self.__get_X(df_test_path, sample_type=SampleType.test).columns,
+            index=[f"PC{i+1}" for i in range(self.__pca_main.n_components_)]
+        )
 
+        # Optionally, we can also return absolute values sorted per component
+        sorted_components = pca_components.abs().apply(lambda x: x.sort_values(ascending=False), axis=1)
+        
+        return sorted_components.T
+    
+    def plot_loadings_heatmap(self) -> None:
+        """
+        Plot the PCA loadings heatmap.
+        """
+        import seaborn as sns
+
+        pca_components = self.pca_variables_importance()
+        plt.figure(figsize=(24, 16))
+        sns.heatmap(
+            pca_components,
+            cmap="coolwarm",
+            annot=True,
+            fmt=".2f",
+            cbar_kws={"label": "Loading"},
+        )
+        plt.title("PCA Loadings Heatmap")
+        plt.xlabel("Variables")
+        plt.ylabel("Principal Components")
+        plt.show()
+    
     def assert_cluster_model(
         self, model: ClusterType, k_range: range = range(2, 10)
     ) -> plt.Figure:
