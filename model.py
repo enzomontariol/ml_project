@@ -1,45 +1,53 @@
-#%% Imports
+# %% Imports
 
 import pandas as pd
 import numpy as np
 from typing import List, Dict
 from clusterer import Clusterer, ClusterType
+import tensorflow as tf
 from sklearn.linear_model import LogisticRegression
 from sklearn.ensemble import ExtraTreesClassifier
 from sklearn.ensemble import AdaBoostClassifier
 from sklearn.utils import all_estimators
 from sklearn.metrics import balanced_accuracy_score
+from sklearn.utils.class_weight import compute_class_weight
 
 
-#%% Global Variables
+# %% Global Variables
+
 
 class Model(Clusterer):
     """
     Model class that inherits from Clusterer.
     """
 
-    def __init__(self,
+    def __init__(
+        self,
         n_components: int | float = 0.8,
         cluster_model: ClusterType = ClusterType.kmeans,
         n_cluster: int = 3,
         random_state: int = 42,
-        spot_dif: bool = True
-        ):
-        super().__init__(n_components=n_components,
-                         cluster_model=cluster_model,
-                         n_cluster=n_cluster,
-                         random_state=random_state,
-                         spot_dif=spot_dif)
+        spot_dif: bool = True,
+    ):
+        super().__init__(
+            n_components=n_components,
+            cluster_model=cluster_model,
+            n_cluster=n_cluster,
+            random_state=random_state,
+            spot_dif=spot_dif,
+        )
         self.X_train_list = self.__get_list_by_cluster(self.X_train)
         self.X_test_list = self.__get_list_by_cluster(self.X_test)
-        self.classifier_models = {ExtraTreesClassifier(random_state=self.random_state):None,
-                                 AdaBoostClassifier(random_state=self.random_state):None,
-                                 LogisticRegression(random_state=self.random_state):None}
-        
-        self.train_models()        
+        self.classifier_models = {
+            ExtraTreesClassifier(random_state=self.random_state): None,
+            AdaBoostClassifier(random_state=self.random_state): None,
+            LogisticRegression(random_state=self.random_state): None,
+        }
+
+        self.train_classifier_models()
         self.__sklearn_classifiers = self.__get_sklearn_classifiers()
-        
-    def __get_list_by_cluster(self, df : pd.DataFrame) -> List[pd.DataFrame]:
+
+    def __get_list_by_cluster(self, df: pd.DataFrame) -> List[pd.DataFrame]:
         """
         Splits the dataframe into a list of dataframes by cluster.
         """
@@ -49,8 +57,8 @@ class Model(Clusterer):
             df_temp = df_temp.drop(columns=["Cluster"])
             return_list.append(df_temp)
         return return_list
-    
-    def train_models(self) -> None:
+
+    def train_classifier_models(self) -> None:
         """
         Trains the model using the ExtraTreesClassifier.
         """
@@ -59,21 +67,21 @@ class Model(Clusterer):
             for j in range(self.n_cluster):
                 X_train = self.X_train_list[j]
                 y_train = self.y_train[self.y_train.index.isin(X_train.index)]
-                
+
                 i.fit(X_train, y_train)
-                
+
                 y_pred_test = i.predict(self.X_test_list[j])
                 y_pred_test_list.append(y_pred_test)
-                
+
             y_pred_test_all = np.concatenate(y_pred_test_list)
             score = balanced_accuracy_score(y_pred_test_all, self.y_test)
             self.classifier_models[i] = score
-    
+
     def __get_sklearn_classifiers(self) -> Dict[str, object]:
         """
         Returns a list of sklearn classifiers.
         """
-        estimators = all_estimators(type_filter='classifier')
+        estimators = all_estimators(type_filter="classifier")
 
         all_clfs = {}
         for name, ClassifierClass in estimators:
@@ -83,7 +91,83 @@ class Model(Clusterer):
             except:
                 continue
         return all_clfs
-    
+
+    def __get_lstm_model(self):
+        models = {}
+        scores = {}
+        for i in range(self.n_cluster):
+            X_train = self.X_train_list[i]
+            y_train = self.y_train[self.y_train.index.isin(X_train.index)]
+            X_test = self.X_test_list[i]
+            y_test = self.y_test[self.y_test.index.isin(X_test.index)]
+
+            model, balanced_accuracy = (
+                self.__create_and_train_lstm_model(X_train, y_train, X_test, y_test)
+            )
+            models[i] = model
+            scores[i] = balanced_accuracy
+            
+        return models, scores
+
+    def __create_and_train_lstm_model(
+        X_train_cluster, y_train_cluster, X_test_cluster, y_test_cluster
+    ):
+        # Model architecture
+        model = tf.keras.Sequential(
+            [
+                tf.keras.layers.LSTM(
+                    128, return_sequences=True
+                ),  # Augmenter le nombre de neurones
+                tf.keras.layers.Dropout(0.3),  # Ajuster le dropout
+                tf.keras.layers.LSTM(32),  # Ajouter plus de couches
+                tf.keras.layers.Dropout(0.3),
+                tf.keras.layers.Dense(
+                    32, activation="relu"
+                ),  # Couche dense supplémentaire
+                tf.keras.layers.Dense(1, activation="sigmoid"),
+            ]
+        )
+
+        # Learning rate schedule
+        lr_schedule = tf.keras.optimizers.schedules.ExponentialDecay(
+            initial_learning_rate=0.001, decay_steps=1000, decay_rate=0.9
+        )
+
+        # Compile model
+        model.compile(
+            optimizer=tf.keras.optimizers.Adam(learning_rate=lr_schedule),
+            loss="binary_crossentropy",
+            metrics=["accuracy"],
+        )
+
+        # Calculate class weights for the specific cluster
+        cluster_class_weights = compute_class_weight(
+            "balanced",
+            classes=np.unique(y_train_cluster),
+            y=y_train_cluster.values.ravel(),
+        )
+        cluster_weights = dict(enumerate(cluster_class_weights))
+
+        # Train model
+        model.fit(
+            X_train_cluster,
+            y_train_cluster,
+            epochs=50,
+            batch_size=32,
+            validation_split=0.2,
+            class_weight=cluster_weights,
+            verbose=1,
+        )
+
+        # Get predictions
+        predictions = model.predict(X_test_cluster)
+        predictions_binary = (predictions > 0.5).astype(int)
+
+        # Calculate metrics
+        balanced_accuracy = balanced_accuracy_score(y_test_cluster, predictions_binary)
+
+        return model, balanced_accuracy
+
     def assert_best_classifier(self) -> pd.DataFrame:
         """
         Asserts the best classifier by balanced accuracy score.
@@ -98,27 +182,38 @@ class Model(Clusterer):
                     X_train = self.X_train_list[c]
                     X_test = self.X_test_list[c]
                     y_train = self.y_train[self.y_train.index.isin(X_train.index)]
-                    
+
                     classifier.fit(X_train, y_train)
-                    
+
                     y_pred_test = classifier.predict(X_test)
                     y_pred_test_list.append(y_pred_test)
 
                 y_pred_test_all = np.concatenate(y_pred_test_list)
 
                 score = balanced_accuracy_score(y_pred_test_all, self.y_test)
-                
-                output = pd.concat([output, pd.DataFrame({"Classifier": [classifier_name], "Score": [score]})], ignore_index=True)
-                
+
+                output = pd.concat(
+                    [
+                        output,
+                        pd.DataFrame(
+                            {"Classifier": [classifier_name], "Score": [score]}
+                        ),
+                    ],
+                    ignore_index=True,
+                )
+
             except:
                 continue
-            
+
         return output.sort_values(by="Score", ascending=False).reset_index(drop=True)
-    
+
+
 if __name__ == "__main__":
-    model = Model(n_components=0.8,
-                 cluster_model=ClusterType.kmeans,
-                 n_cluster=3,
-                 random_state=42,
-                 spot_dif=False)
+    model = Model(
+        n_components=0.8,
+        cluster_model=ClusterType.kmeans,
+        n_cluster=3,
+        random_state=42,
+        spot_dif=False,
+    )
     print(model.assert_best_classifier())
