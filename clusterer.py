@@ -2,10 +2,7 @@
 
 
 import pandas as pd
-import numpy as np
-import plotly.graph_objects as go
 import matplotlib.pyplot as plt
-from typing import List, Tuple, Dict, Any, Union
 from sklearn.decomposition import PCA
 from dataclasses import dataclass
 from sklearn.mixture import GaussianMixture
@@ -75,8 +72,8 @@ class Clusterer:
         self.__X_test_pca = self.__pca_main.transform(self.X_test)
         self.__get_cluster_labels()
 
-        self.y_train = self.__get_y(y_train_path)
-        self.y_test = self.__get_y(y_test_path)
+        self.y_train = self.__get_y(y_train_path, sample_type=SampleType.train)
+        self.y_test = self.__get_y(y_test_path, sample_type=SampleType.test)
 
     def __get_X(self, sub_folder_path: str, sample_type: SampleType) -> pd.DataFrame:
         """
@@ -102,11 +99,19 @@ class Clusterer:
                 self.df = self.df.drop(columns=f"spot_id_delta_lag_{i}", axis=1)
         return df
 
-    def __get_y(self, sub_folder_path: str) -> pd.DataFrame:
+    def __get_y(self, sub_folder_path: str, sample_type: SampleType) -> pd.DataFrame:
         """
         Import target data from a CSV file.
         """
-        return pd.read_csv(data_path + sub_folder_path, index_col=0)
+        df = pd.read_csv(data_path + sub_folder_path, index_col=0)
+        df.index = pd.to_datetime(df.index, utc=True)
+        
+        if sample_type == SampleType.train:
+            df = df[df.index.isin(self.X_train.index)]
+        else:
+            df = df[df.index.isin(self.X_test.index)]
+        
+        return 
 
     def __get_cluster_labels(self) -> None:
         """
@@ -202,3 +207,4 @@ class Clusterer:
                 silhouette_scores.append(silhouette_score(self.X_train, labels))
             return_list = [silhouette_scores]
         return return_list
+
