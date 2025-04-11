@@ -96,7 +96,7 @@ class Clusterer:
         """
         if self.__spot_dif != True:
             for i in range(1, 19):
-                self.df = self.df.drop(columns=f"spot_id_delta_lag_{i}", axis=1)
+                df = df.drop(columns=f"spot_id_delta_lag_{i}", axis=1)
         return df
 
     def __get_y(self, sub_folder_path: str, sample_type: SampleType) -> pd.DataFrame:
