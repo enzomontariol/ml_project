@@ -110,8 +110,7 @@ class Clusterer:
             df = df[df.index.isin(self.X_train.index)]
         else:
             df = df[df.index.isin(self.X_test.index)]
-        
-        return 
+        return df
 
     def __get_cluster_labels(self) -> None:
         """
