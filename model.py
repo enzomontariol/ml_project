@@ -43,7 +43,7 @@ class Model(Clusterer):
             AdaBoostClassifier(random_state=self.random_state): None,
             LogisticRegression(random_state=self.random_state): None,
         }
-        self.train_classifier_models()
+        self.__train_classifier_models()
         self.__sklearn_classifiers = self.__get_sklearn_classifiers()
         
         self.__lstm_results = self.__get_lstm_model()
@@ -62,7 +62,7 @@ class Model(Clusterer):
             return_list.append(df_temp)
         return return_list
 
-    def train_classifier_models(self) -> None:
+    def __train_classifier_models(self) -> None:
         """
         Trains the model using the ExtraTreesClassifier.
         """
@@ -229,13 +229,3 @@ class Model(Clusterer):
                 continue
 
         return output.sort_values(by="Score", ascending=False).reset_index(drop=True)
-
-
-if __name__ == "__main__":
-    model = Model(
-        n_components=0.8,
-        cluster_model=ClusterType.kmeans,
-        n_cluster=3,
-        random_state=42,
-        spot_dif=False,
-    )
