@@ -55,13 +55,13 @@ class Clusterer:
         random_state: int = 42,
         spot_dif: bool = True,
     ):
-        self.__random_state = random_state
+        self.random_state = random_state
         self.n_cluster = n_cluster
         self.__cluster_model = (
-            KMeans(n_cluster, random_state=self.__random_state)
+            KMeans(n_cluster, random_state=self.random_state)
             if cluster_model == ClusterType.kmeans
             else GaussianMixture(
-                n_components=n_cluster, random_state=self.__random_state
+                n_components=n_cluster, random_state=self.random_state
             )
         )
         self.__spot_dif = spot_dif
@@ -190,7 +190,7 @@ class Clusterer:
             aic_scores = []
             for k in k_range:
                 model = GaussianMixture(
-                    n_components=k, random_state=self.__random_state
+                    n_components=k, random_state=self.random_state
                 )
                 model.fit(self.X_train)
                 labels = model.predict(self.X_train)
@@ -200,7 +200,7 @@ class Clusterer:
             return_list = [silhouette_scores, bic_scores, aic_scores]
         else:
             for k in k_range:
-                model = KMeans(n_clusters=k, random_state=self.__random_state)
+                model = KMeans(n_clusters=k, random_state=self.random_state)
                 model.fit(self.X_train)
                 labels = model.predict(self.X_train)
                 silhouette_scores.append(silhouette_score(self.X_train, labels))
